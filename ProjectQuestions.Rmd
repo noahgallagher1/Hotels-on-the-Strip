@@ -1,0 +1,464 @@
+---
+title: "Stat450_project_questions"
+author: "Noah Gallagher"
+date: "4/27/2021"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+vegas <- read.csv('vegas2.csv',sep = ',')
+library(tidyverse)
+```
+## Question 1 : Is there a relationship between a Hotel’s Ratings and Stars?
+
+ a) First let us conduct ANOVA tests to analyze each variable Score and Hotel.stars
+```{r}
+attach(vegas)
+grp = factor(Hotel.name)
+
+# AOV test for Score
+summary(aov(Score ~ grp))
+
+# AOV test for Hotel.stars
+summary(aov(Hotel.stars ~ grp))
+
+# F stat = 2.10
+g=21
+p=2
+N=504
+alpha=0.05
+qf(1-(alpha)/p, N-g, g-1)
+```
+-For Hotel Score: We Reject Ho meaning, all hotel ratings differ significantly among the Hotels and there is no correlation between them.
+-For Hotel Stars: We Reject Ho, meaning all hotel Stars differ significantly among the Hotels.
+
+ b) Now, let us determine the correlation between Hotel Reviews and Hotel Stars.
+```{r}
+# Removing NA's
+vegas2<-na.omit(vegas)
+
+attach(vegas2)
+
+# Correlation
+cor(Score, Hotel.stars)
+
+# Fitting a line to Score and Stars
+ggplot(vegas2, aes(x = Score, y = Hotel.stars))+
+  geom_point(shape = 1) +
+  geom_smooth(method = lm) +
+  geom_jitter(shape = 1)+
+  labs(y='Hotel Stars')
+
+# Visualize correlation btw Score and Stars
+subset <- vegas2%>%
+  select(Score, Hotel.stars)
+
+pairs(subset, lower.panel = NULL)
+```
+The correlation is 0.19, which is a weak positive correlation.
+
+ c) Let us check proportion of points within the prediction ellipse
+```{r}
+#Var-cov Matrix
+S = cov(subset)
+
+# Find column means
+xbar = colMeans(subset)
+
+# Mahalanobis Test
+D2 = mahalanobis(subset, xbar, S)
+
+# Variable count
+p = ncol(subset)
+
+# Proportion
+sum(D2 <= qchisq(.95, p))/nrow(subset)
+```
+Thus, The proportion of points within the prediction ellipse is 96.23%
+
+
+ d) MANOVA TESTNG: Can we determine if there is a significant difference between the stars a hotel has and their reviews?
+  (are the average of scores and average of stars are the same among all hotel names)
+  Testing: Ho: Mu-Score = Mu-Stars vs. Ha: Mu-Score != Mu-Stars
+```{r}
+single_hotels <- vegas%>%
+  select(Hotel.name, Score, Hotel.stars)%>%
+  group_by(Hotel.name)%>%
+  summarize(
+    avg_score = mean(Score),
+  )
+
+hotel_stars <- vegas%>%
+  select(Hotel.name, Hotel.stars)%>%
+  group_by(Hotel.name)%>%
+  summarise(
+    Stars = mean(Hotel.stars)
+  )
+
+new_vegas <- left_join(single_hotels, hotel_stars)
+new_vegas
+
+#table(vegas$Hotel.name)
+#attach(vegas)
+Y = cbind(new_vegas$avg_score, new_vegas$Stars)
+grp = as.factor(new_vegas$Hotel.name)
+fit = manova(Y ~ grp)
+summary(fit, test = 'Wilks')
+
+# you can try grouping the hotel names into hotel types to reduce g.  
+
+star_level <- new_vegas%>%
+  mutate(
+    
+  )
+
+high_star <- vegas%>%
+  filter(Hotel.stars == 5)%>%
+  mutate(
+    level = 'high'
+  )
+high_star
+
+med_stars <- vegas%>%
+  filter(Hotel.stars == 4)%>%
+  mutate(
+    level = 'med'
+  )
+
+low_stars <- vegas%>%
+  filter(Hotel.stars == 3)%>%
+  mutate(
+    level = 'low'
+  )
+low_stars
+stars<- full_join(high_star, med_stars)
+stars2<- full_join(stars, low_stars)
+stars2
+
+
+# Y = cbind(stars2$Score, stars2$Hotel.stars)
+# grp = as.factor(stars2$level)
+# fit = manova(Y ~ grp)
+# summary(fit, test = 'Wilks')
+
+
+```
+
+Getting Score means for each hotel
+```{r}
+#attach(vegas)
+
+score_means<-vegas%>%
+  group_by(Hotel.name)%>%
+  summarize(
+    avg_rating = mean(Score)
+  )%>%
+  arrange(desc(avg_rating))
+score_means
+
+cat("The avergae score a hotel is given is: ", mean(score_means$avg_rating), "\nThe variance across all hotel's Scores is: ", var(score_means$avg_rating))
+
+#plotting scores
+ggplot(vegas, aes(x=Score)) +
+            geom_histogram(bins=5) +
+            labs(x='Scores', y='count')
+```
+
+
+Conclusion:
+
+-all hotel ratings differ significantly among the Hotels and there is no correlation between them.
+-all hotel Stars differ significantly among the Hotels.
+-The correlation is 0.19, which is a weak positive correlation.
+-The proportion of points within the prediction ellipse is 96.23%
+
+
+## Question 2 - Can we determine if there is a significant difference between tourist reviews and USA resident reviews for hotels?
+
+ a) Plotting difference of Means
+```{r}
+# Tourist Dataset
+tourist_reviews<-vegas%>%
+  filter(User.country != 'USA')%>%
+  group_by(Score)%>%
+  mutate(
+    count = n()
+  )
+
+a = ggplot(tourist_reviews, aes(x=Score)) +
+            geom_histogram(bins=5)+
+            geom_vline(xintercept = c(2, 5), color = "blue", size = 1)+
+            labs(x='Scores', y='count', title= "Tourist Reviews")
+
+mean(tourist_reviews$Score)
+
+# USA dataset
+usa_reviews<-vegas%>%
+  filter(User.country == 'USA')%>%
+  group_by(Score)%>%
+  mutate(
+    count = n()
+  )
+
+b = ggplot(usa_reviews, aes(x=Score)) +
+            geom_histogram(bins=5) +
+            geom_vline(xintercept = c(2, 5), color = "blue", size = 1)+
+            labs(x='Scores', y='count', title = "USA Reviews")
+
+mean(usa_reviews$Score)
+
+library(gridExtra)
+grid.arrange(a, b, nrow=1, ncol=2)
+
+# Get the Confidence Intervals
+quantile(tourist_reviews$Score, c(0.025, 0.975))
+quantile(usa_reviews$Score, c(0.025, 0.975))
+
+
+
+# Scatter plot
+ggplot(tourist_reviews, aes(x=Score, y=count)) +
+            geom_point()+
+            labs(x='Scores', y='count', title = "Tourist Reviews")
+
+ggplot(tourist_reviews, aes(x=Score, y=count)) +
+            geom_point()+
+            labs(x='Scores', y='count', title = "USA Reviews")
+
+
+# Check Correlation
+set.seed(9)
+tourist_reviews2 <-vegas%>%
+  filter(User.country != 'USA')%>%
+  select(Score)%>%
+  na.omit(tourist_reviews2)%>%
+  mutate(
+    type = 'tourist'
+  )%>%
+  sample_n(200)
+tourist_reviews2
+
+usa_reviews2 <-vegas%>%
+  filter(User.country == 'USA')%>%
+  select(Score)%>%
+  na.omit(usa_reviews2)%>%
+  mutate(
+    type = 'us'
+  )%>%
+  sample_n(200)
+usa_reviews2
+
+scores_joined <- full_join(tourist_reviews2, usa_reviews2)
+scores_joined
+
+# Correlation between both scores
+#pairs(my_scores)
+
+# cor(my_scores$tourist,my_scores$usa)
+
+# - analyze variable Score independently based on type of tourist
+
+
+# ANOVA TEST 
+
+# Grouping by tourist type
+grp = factor(scores_joined$type)
+
+#Conducting ANOVA Test based on Review Score
+summary(aov(scores_joined$Score ~ grp))
+
+# get F stat
+g=2
+p=1
+N=400
+alpha=0.05
+qf(1-alpha, N-g, g-1)
+```
+Tourist Mean: 4.0976
+Resident Mean: 4.1567
+
+We do NOT reject HO, all hotel scores DO NOT differ significantly among the tourist type.
+
+
+## Question 3: Are the average of scores and average of stars are the same among each Period of Stay?
+
+Lets first find the most frequent period of stay.
+```{r}
+period_stay <-vegas%>%
+  select(Period.of.stay)%>%
+  group_by(Period.of.stay)%>%
+  summarize(
+    num_guests = n()
+  )%>%
+  arrange(desc(num_guests))
+period_stay
+```
+
+Now lets use MANOVA to answer: Are the average of scores and average of stars are the same among each Period of Stay?
+```{r}
+#attach(vegas)
+Y = cbind(vegas$Score, vegas$Hotel.stars)
+grp = factor(vegas$Period.of.stay)
+fit = manova(Y ~ grp)
+summary(fit, test = 'Wilks')
+
+# a = 500, b = 2, c = 2
+a <- N-g-((p-g+2)/2)
+b <- sqrt((p^2*(g-1)^2-4) / (p^2+(g-1)^2-5))
+c<- (p*(g-1)-2)/(2)
+
+# F stat = 13.9
+g=4
+p=2
+N=504
+alpha=0.05
+qf(1-(alpha), p*(g-1), (a*b)-c)
+
+```
+
+We do not reject Ho, average of scores and average of stars are the same among each Period of Stay.
+
+
+Count of travelers
+```{r}
+popular_traveler <- vegas%>%
+  group_by(Traveler.type)%>%
+  summarize(count = n())%>%
+  arrange(desc(count))
+
+popular_traveler
+```
+- Most popular Traveler type is Couples.
+
+What period of stay is best for travelers?
+```{r}
+#get period per traveler type count
+ppt <- vegas%>%
+  group_by(Traveler.type, Period.of.stay)%>%
+  summarize(count = n())%>%
+  rename(
+    traveler = Traveler.type,
+    stay = Period.of.stay
+  )%>%
+  arrange(traveler)
+ppt
+
+library(sqldf)
+sqldf("SELECT distinct traveler, stay, max(count) as num_guests 
+       FROM ppt 
+       GROUP BY traveler 
+       ORDER BY num_guests desc")
+
+
+
+```
+The best time for couples is: Sep-Nov
+The best time for families is: Jun-Aug
+The best time for Friends is: Mar-May
+The best time for Business is: Dec-Feb
+The best time for individuals is: Jun-Aug
+
+## Question 4: Amenities
+
+First lets determine What amenities are normally included for all hotels?
+```{r}
+# Lets see what hotels have certain amenities
+normal_amenities <- vegas%>%
+  group_by(Hotel.name)%>%
+  summarize( 
+    pools = sum(Pool == 'YES')/24, #we divide by 24 since there are 24 entries for each hotel
+    gyms = sum(Gym == 'YES')/24,
+    tennis = sum(Tennis.court == 'YES')/24,
+    spas = sum(Spa == 'YES')/24,
+    casinos = sum(Casino == 'YES')/24,
+    wifi = sum(Free.internet == 'YES')/24
+  )
+#normal_amenities
+
+# Get the number of hotels in dataset (21 hotels)
+count_hotels <- vegas%>%
+  summarize(num_hotel = length(unique(Hotel.name)))
+#count_hotels
+
+# Lets get the proportions of amenities
+hotel_props<- normal_amenities%>%
+  summarize(
+    prop_pools = sum(pools) / 21,
+    prop_gym = sum(gyms) / 21,
+    prop_tennis = sum(tennis) / 21,
+    prop_spas = sum(spas) / 21,
+    prop_casinos = sum(casinos) / 21,
+    prop_wifi = sum(wifi) / 21
+  )
+
+hotel_props
+```
+Thus we can conclude:
+  - 95.24% of hotels have Pools
+  - 95.24% of hotels have Gyms
+  - 23.81% of hotels have Tennis Courts
+  - 76.19% of hotels have Spas
+  - 90.48% of hotels have Casinos
+  - 95.24% of hotels have Free Internet
+  
+Let's plot these:
+```{r}
+# Plotting Pool Presence
+pool_plot = ggplot(vegas, aes(x=Pool)) +
+            geom_bar() +
+            labs(x='Presence of Pool', y='count')
+#pool_plot
+
+# Plotting Gym Presence
+gym_plot = ggplot(vegas, aes(x=Gym)) +
+            geom_bar() +
+            labs(x='Presence of Gym', y='count')
+#gym_plot
+
+# Plotting Spa Presence
+spa_plot = ggplot(vegas, aes(x=Spa)) +
+            geom_bar() +
+            labs(x='Presence of Spa', y='count')
+#spa_plot
+
+# Plotting Tennis Court Presence
+tennis_plot = ggplot(vegas, aes(x=Tennis.court)) +
+            geom_bar() +
+            labs(x='Presence of Tennis Court', y='count')
+#tennis_plot
+
+# Plotting Casino Presence
+casino_plot = ggplot(vegas, aes(x=Casino)) +
+            geom_bar() +
+            labs(x='Presence of Casino', y='count')
+#casino_plot
+
+# Plotting Free Wifi
+wifi_plot = ggplot(vegas, aes(x=Free.internet)) +
+            geom_bar() +
+            labs(x='Presence of Wifi', y='count')
+#wifi_plot
+
+# Merging
+grid.arrange(pool_plot, gym_plot, spa_plot, tennis_plot, casino_plot, wifi_plot, ncol=3, nrow=2)
+```
+
+## Question 5: What correaltions can we determine?
+
+```{r}
+numeric_subset<- vegas2%>%
+  select(Nr..reviews, Nr..hotel.reviews, Helpful.votes, Score, Hotel.stars, Nr..rooms, Member.years)
+
+cor(numeric_subset)
+pairs(numeric_subset, lower.panel = NULL,)
+#cov(numeric_subset)
+#colMeans(numeric_subset)
+```
+Highest: Number of reviews a user has done and the number of helpful votes they have recieved 0.79
+Lowest: 
